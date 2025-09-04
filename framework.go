@@ -233,7 +233,7 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 	} else if rc, ok := resultInterface.(io.ReadCloser); ok {
 		defer rc.Close()
 
-		wr.Header().Set("Content-Type", "application/octet-stream")
+		fmt.Printf("New Version\n\n\n")
 
     	if custom != nil {
     		copyHeader(wr.Header(), custom.headers)
