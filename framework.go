@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"io"
 
 	"github.com/go-playground/validator/v10"
 )
@@ -229,6 +230,20 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 	} else if resultValue.Kind() == reflect.String {
 		wr.Header().Add("Content-Type", "text/html")
 		js = []byte(resultValue.String())
+	} else if rc, ok := resultInterface.(io.ReadCloser); ok {
+		defer rc.Close()
+
+		wr.Header().Set("Content-Type", "application/octet-stream")
+
+    	if custom != nil {
+    		copyHeader(wr.Header(), custom.headers)
+    	} else {
+    		wr.Header().Set("Content-Disposition", `attachment; filename="file.bin"`)
+    	}
+
+    	io.Copy(wr, rc)
+
+    	return true, nil
 	} else {
 		//we are not validating output fo now
 		// if resultValue.Kind() == reflect.Struct {
