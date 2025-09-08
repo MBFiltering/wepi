@@ -273,7 +273,7 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		}
 	}
 
-	if r, ok := resultInterface.(io.Reader); ok && len(custom.body) <= 0 {
+	if r, ok := resultInterface.(io.Reader); ok && len(custom.body) == 0 {
 		if rc, ok := resultInterface.(io.Closer); ok {
 			defer rc.Close()
 		}
