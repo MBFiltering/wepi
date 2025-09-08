@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"github.com/MBFiltering/go-helpers/maphelper"
+	"io"
+	"log"
 	"net/http"
 	"reflect"
 	"strings"
-	"io"
 
 	"github.com/go-playground/validator/v10"
 )
@@ -230,6 +230,8 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 	} else if resultValue.Kind() == reflect.String {
 		wr.Header().Add("Content-Type", "text/html")
 		js = []byte(resultValue.String())
+	} else if _, ok := resultInterface.(io.Reader); ok {
+		// just to jump else below
 	} else {
 		//we are not validating output fo now
 		// if resultValue.Kind() == reflect.Struct {
@@ -271,22 +273,17 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		}
 	}
 
-	if rc, ok := resultInterface.(io.ReadCloser); ok && len(custom.body) <= 0 {
-		defer rc.Close()
+	if r, ok := resultInterface.(io.Reader); ok && len(custom.body) <= 0 {
+		if rc, ok := resultInterface.(io.Closer); ok {
+			defer rc.Close()
+		}
 
-   	 	if custom.headers == nil {
-   	 		wr.Header().Set("Content-Disposition", `attachment; filename="file"`)
-   	 	}
+		if custom.headers == nil {
+			wr.Header().Set("Content-Disposition", `attachment; filename="file"`)
+		}
 
-    	io.Copy(wr, rc)
-    	return true, nil
-	} else if r, ok := resultInterface.(io.Reader); ok && len(custom.body) <= 0 {
-   	 	if custom.headers == nil {
-   	 		wr.Header().Set("Content-Disposition", `attachment; filename="file"`)
-   	 	}
-
-    	io.Copy(wr, r)
-    	return true, nil
+		io.Copy(wr, r)
+		return true, nil
 	}
 
 	log.Printf(req.URL.Path+" response status code: %v", status)
@@ -294,7 +291,6 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 	wr.Write(body)
 
 	return true, nil
-
 }
 
 func validateAndExtractRouteFunc(route *Route) (handlerFunc reflect.Value, structType reflect.Type, err error) {
