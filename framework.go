@@ -230,18 +230,6 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 	} else if resultValue.Kind() == reflect.String {
 		wr.Header().Add("Content-Type", "text/html")
 		js = []byte(resultValue.String())
-	} else if rc, ok := resultInterface.(io.ReadCloser); ok {
-		defer rc.Close()
-
-    	if custom != nil {
-    		copyHeader(wr.Header(), custom.headers)
-    	} else {
-    		wr.Header().Set("Content-Disposition", `attachment; filename="file.bin"`)
-    	}
-
-    	io.Copy(wr, rc)
-
-    	return true, nil
 	} else {
 		//we are not validating output fo now
 		// if resultValue.Kind() == reflect.Struct {
@@ -281,6 +269,24 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 			wr.WriteHeader(custom.status)
 			status = custom.status
 		}
+	}
+
+	if rc, ok := resultInterface.(io.ReadCloser); ok && len(custom.body) <= 0 {
+		defer rc.Close()
+
+   	 	if custom.headers == nil {
+   	 		wr.Header().Set("Content-Disposition", `attachment; filename="file"`)
+   	 	}
+
+    	io.Copy(wr, rc)
+    	return true, nil
+	} else if r, ok := resultInterface.(io.Reader); ok && len(custom.body) <= 0 {
+   	 	if custom.headers == nil {
+   	 		wr.Header().Set("Content-Disposition", `attachment; filename="file"`)
+   	 	}
+
+    	io.Copy(wr, r)
+    	return true, nil
 	}
 
 	log.Printf(req.URL.Path+" response status code: %v", status)
