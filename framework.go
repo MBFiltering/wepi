@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"github.com/MBFiltering/go-helpers/maphelper"
+	"io"
+	"log"
 	"net/http"
 	"reflect"
 	"strings"
@@ -229,6 +230,8 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 	} else if resultValue.Kind() == reflect.String {
 		wr.Header().Add("Content-Type", "text/html")
 		js = []byte(resultValue.String())
+	} else if _, ok := resultInterface.(io.Reader); ok {
+		// just to jump else below
 	} else {
 		//we are not validating output fo now
 		// if resultValue.Kind() == reflect.Struct {
@@ -261,13 +264,28 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 			wr.Header().Del("Content-Type")
 			copyHeader(wr.Header(), custom.headers)
 		}
-		if len(custom.body) > 0 {
-			body = custom.body
-		}
 		if custom.status != 0 {
 			wr.WriteHeader(custom.status)
 			status = custom.status
 		}
+		if len(custom.body) > 0 {
+			body = custom.body
+			_, err = wr.Write(body)
+			return true, err
+		}
+	}
+
+	if r, ok := resultInterface.(io.Reader); ok {
+		if rc, ok := resultInterface.(io.Closer); ok {
+			defer rc.Close()
+		}
+
+		if custom.headers == nil {
+			wr.Header().Set("Content-Disposition", `attachment; filename="file"`)
+		}
+
+		io.Copy(wr, r)
+		return true, nil
 	}
 
 	log.Printf(req.URL.Path+" response status code: %v", status)
@@ -275,7 +293,6 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 	wr.Write(body)
 
 	return true, nil
-
 }
 
 func validateAndExtractRouteFunc(route *Route) (handlerFunc reflect.Value, structType reflect.Type, err error) {
