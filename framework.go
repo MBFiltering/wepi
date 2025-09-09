@@ -273,12 +273,12 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		}
 	}
 
-	if r, ok := resultInterface.(io.Reader); ok && len(custom.body) == 0 {
+	if r, ok := resultInterface.(io.Reader); ok && (custom == nil || len(custom.body) == 0) {
 		if rc, ok := resultInterface.(io.Closer); ok {
 			defer rc.Close()
 		}
 
-		if custom.headers == nil {
+		if custom == nil || custom.headers == nil {
 			wr.Header().Set("Content-Disposition", `attachment; filename="file"`)
 		}
 
