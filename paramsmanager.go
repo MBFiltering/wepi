@@ -3,7 +3,6 @@ package wepi
 import (
 	"errors"
 	"math"
-	"github.com/MBFiltering/go-helpers/maphelper"
 )
 
 type ParamsManager struct {
@@ -37,7 +36,7 @@ func (p ParamsManager) GetFloat64OrNAN(s string) float64 {
 }
 
 func (p ParamsManager) GetBool(key string) bool {
-	return maphelper.GetBool(p.data, key)
+	return GetBool(p.data, key)
 }
 
 func (p ParamsManager) GetFloat64(s string) (float64, error) {

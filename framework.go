@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/MBFiltering/go-helpers/maphelper"
 	"io"
 	"log"
 	"net/http"
@@ -124,13 +123,13 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 				log.Println("Validator Error ", err)
 				wr.WriteHeader(http.StatusUnprocessableEntity)
 				msg := fmt.Sprint("Error parsing data: ", err)
-				json, _ := maphelper.JsonifyPretty(map[string]any{"error": msg}, "", " ")
+				json, _ := JsonifyPretty(map[string]any{"error": msg}, "", " ")
 				if ve, ok := err.(validator.ValidationErrors); ok {
 					list := make([]string, 0)
 					for _, fe := range ve {
 						list = append(list, getValidationError(fe, validateValue.Interface()))
 					}
-					json, _ = maphelper.JsonifyPretty(map[string]any{"error": "validation errors", "list": list}, "", " ")
+					json, _ = JsonifyPretty(map[string]any{"error": "validation errors", "list": list}, "", " ")
 				}
 
 				wr.Write([]byte(json))
@@ -376,7 +375,7 @@ func readRequestValues(req *http.Request, structType reflect.Type) (map[string]a
 			//generate map value if struct type is expected
 			if structType != reflect.TypeOf((*ParamsManager)(nil)).Elem() {
 
-				jsonstr, err := maphelper.Jsonify(values)
+				jsonstr, err := Jsonify(values)
 				if err == nil {
 					stValue := reflect.New(structType)
 					err = json.Unmarshal([]byte(jsonstr), stValue.Interface())
