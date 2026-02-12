@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strings"
 
@@ -354,4 +355,52 @@ func (wep *WepiController) optionsInterceptor(path string, w http.ResponseWriter
 	}
 
 	return false
+}
+
+// GetURLQuery converts url.Values into a flat map using the first value for each key.
+func GetURLQuery(values url.Values) map[string]any {
+	result := make(map[string]any)
+	for key, value := range values {
+		if len(value) > 0 {
+			result[key] = value[0]
+		}
+	}
+	return result
+}
+
+// GetPostFormValues parses the request form and returns values as a flat map.
+func GetPostFormValues(req *http.Request) (map[string]any, error) {
+	err := req.ParseForm()
+	if err != nil {
+		return nil, err
+	}
+	return GetURLQuery(req.PostForm), nil
+}
+
+// GetReqJson decodes the request body as JSON into a map.
+func GetReqJson(req *http.Request) (map[string]any, error) {
+	var dat map[string]any
+	err := json.NewDecoder(req.Body).Decode(&dat)
+	if err != nil {
+		return nil, err
+	}
+	return dat, nil
+}
+
+// Jsonify marshals a map to a JSON string.
+func Jsonify(mp map[string]any) (string, error) {
+	r, err := json.Marshal(mp)
+	if err != nil {
+		return "", err
+	}
+	return string(r), nil
+}
+
+// JsonifyPretty marshals a map to an indented JSON string.
+func JsonifyPretty(mp map[string]any, preffix string, indent string) (string, error) {
+	r, err := json.MarshalIndent(mp, preffix, indent)
+	if err != nil {
+		return "", err
+	}
+	return string(r), nil
 }
