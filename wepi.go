@@ -28,14 +28,6 @@ func (w *WepiController) AddAllowedCORS(cors string) {
 	w.cors[cors] = true
 }
 
-func (w *WepiController) isOriginAllowed(origin string) bool {
-	ok := w.cors[origin]
-	if !ok && w.cors["*"] {
-		return true
-	}
-	return ok
-}
-
 // WepiComposedRoute holds a composed route to add to the controller.
 type WepiComposedRoute struct {
 	path   string

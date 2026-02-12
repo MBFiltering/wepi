@@ -7,14 +7,11 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"reflect"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
 )
-
-var validatorSingleton = validator.New()
 
 // Run processes incoming HTTP requests through the wepi routing system.
 func (w *WepiController) Run(pathHead string, req *http.Request, wr http.ResponseWriter) (bool, error) {
@@ -245,162 +242,10 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 	return true, nil
 }
 
-func validateAndExtractRouteFunc(route *Route) (handlerFunc reflect.Value, structType reflect.Type, err error) {
-	if route.RouteHandler == nil {
-		return reflect.Value{}, nil, errors.New("handler object is nil")
-	}
-
-	rhValue := reflect.ValueOf(route.RouteHandler)
-
-	if rhValue.Kind() == reflect.Ptr {
-		rhValue = rhValue.Elem()
-	}
-
-	if rhValue.Kind() != reflect.Struct {
-		return reflect.Value{}, nil, fmt.Errorf("invalid RouteHandler type %v", rhValue.Kind())
-	}
-
-	handlerFunc = rhValue.FieldByName("Handler")
-
-	if !handlerFunc.IsValid() {
-		return reflect.Value{}, nil, errors.New("handler not found in RouteHandler")
-	}
-
-	handlerType := handlerFunc.Type()
-
-	if handlerType.NumIn() < 1 {
-		return reflect.Value{}, nil, errors.New("handler function has insufficient parameters")
-	}
-
-	// The first input parameter is of type T for struct or ParamsManager for simple
-	structType = handlerType.In(0)
-
-	return handlerFunc, structType, nil
-}
-
 func copyHeader(dst, src http.Header) {
 	for k, vv := range src {
 		for _, v := range vv {
 			dst.Add(k, v)
 		}
 	}
-}
-
-func readRequestValues(req *http.Request, structType reflect.Type) (map[string]any, reflect.Value, error) {
-	if req.Method == http.MethodGet {
-		return GetURLQuery(req.URL.Query()), reflect.Value{}, nil
-	}
-
-	if req.Header.Get("Content-Type") == "application/json" {
-		stValue := reflect.New(structType)
-		err := json.NewDecoder(req.Body).Decode(stValue.Interface())
-		if err != nil {
-			return nil, reflect.Value{}, err
-		}
-		return nil, stValue, nil
-	}
-
-	values, err := GetPostFormValues(req)
-	if err != nil {
-		return nil, reflect.Value{}, err
-	}
-
-	// Generate map value if struct type is expected
-	if structType != reflect.TypeOf((*ParamsManager)(nil)).Elem() {
-		jsonstr, err := Jsonify(values)
-		if err == nil {
-			stValue := reflect.New(structType)
-			err = json.Unmarshal([]byte(jsonstr), stValue.Interface())
-			if err == nil {
-				return values, stValue, nil
-			}
-		}
-		if err != nil {
-			log.Println(err)
-		}
-	}
-
-	return values, reflect.Value{}, nil
-}
-
-func (wep *WepiController) optionsInterceptor(path string, w http.ResponseWriter, req *http.Request) bool {
-	if len(wep.cors) == 0 {
-		return false
-	}
-
-	if req.Method != http.MethodOptions {
-		return false
-	}
-
-	returnCors := false
-	pathFound, _, _ := wep.loadRouteFromRequest(path, http.MethodGet)
-	if pathFound != "" {
-		returnCors = true
-	}
-	if !returnCors {
-		pathFound, _, _ = wep.loadRouteFromRequest(path, http.MethodPost)
-		if pathFound != "" {
-			returnCors = true
-		}
-	}
-
-	if returnCors {
-		if wep.isOriginAllowed(req.Header.Get("Origin")) {
-			w.Header().Set("Access-Control-Allow-Origin", req.Header.Get("Origin"))
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
-			w.WriteHeader(http.StatusNoContent)
-			return true
-		}
-	}
-
-	return false
-}
-
-// GetURLQuery converts url.Values into a flat map using the first value for each key.
-func GetURLQuery(values url.Values) map[string]any {
-	result := make(map[string]any)
-	for key, value := range values {
-		if len(value) > 0 {
-			result[key] = value[0]
-		}
-	}
-	return result
-}
-
-// GetPostFormValues parses the request form and returns values as a flat map.
-func GetPostFormValues(req *http.Request) (map[string]any, error) {
-	err := req.ParseForm()
-	if err != nil {
-		return nil, err
-	}
-	return GetURLQuery(req.PostForm), nil
-}
-
-// GetReqJson decodes the request body as JSON into a map.
-func GetReqJson(req *http.Request) (map[string]any, error) {
-	var dat map[string]any
-	err := json.NewDecoder(req.Body).Decode(&dat)
-	if err != nil {
-		return nil, err
-	}
-	return dat, nil
-}
-
-// Jsonify marshals a map to a JSON string.
-func Jsonify(mp map[string]any) (string, error) {
-	r, err := json.Marshal(mp)
-	if err != nil {
-		return "", err
-	}
-	return string(r), nil
-}
-
-// JsonifyPretty marshals a map to an indented JSON string.
-func JsonifyPretty(mp map[string]any, preffix string, indent string) (string, error) {
-	r, err := json.MarshalIndent(mp, preffix, indent)
-	if err != nil {
-		return "", err
-	}
-	return string(r), nil
 }

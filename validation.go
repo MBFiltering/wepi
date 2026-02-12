@@ -1,6 +1,7 @@
 package wepi
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"reflect"
@@ -8,6 +9,41 @@ import (
 
 	"github.com/go-playground/validator/v10"
 )
+
+var validatorSingleton = validator.New()
+
+func validateAndExtractRouteFunc(route *Route) (handlerFunc reflect.Value, structType reflect.Type, err error) {
+	if route.RouteHandler == nil {
+		return reflect.Value{}, nil, errors.New("handler object is nil")
+	}
+
+	rhValue := reflect.ValueOf(route.RouteHandler)
+
+	if rhValue.Kind() == reflect.Ptr {
+		rhValue = rhValue.Elem()
+	}
+
+	if rhValue.Kind() != reflect.Struct {
+		return reflect.Value{}, nil, fmt.Errorf("invalid RouteHandler type %v", rhValue.Kind())
+	}
+
+	handlerFunc = rhValue.FieldByName("Handler")
+
+	if !handlerFunc.IsValid() {
+		return reflect.Value{}, nil, errors.New("handler not found in RouteHandler")
+	}
+
+	handlerType := handlerFunc.Type()
+
+	if handlerType.NumIn() < 1 {
+		return reflect.Value{}, nil, errors.New("handler function has insufficient parameters")
+	}
+
+	// The first input parameter is of type T for struct or ParamsManager for simple
+	structType = handlerType.In(0)
+
+	return handlerFunc, structType, nil
+}
 
 func getValidationError(er validator.FieldError, mainStruct any) string {
 	switch er.Tag() {
