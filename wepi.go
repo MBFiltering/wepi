@@ -2,6 +2,7 @@ package wepi
 
 import "sync"
 
+// WepiController manages routes, path matching, and CORS configuration.
 type WepiController struct {
 	routes     sync.Map
 	pathRegexs []*PathReader
@@ -11,7 +12,7 @@ type WepiController struct {
 	cors       map[string]bool
 }
 
-// creates a wepi controller instance wich can be used to add routes to it
+// Get creates a new WepiController instance which can be used to add routes.
 func Get() *WepiController {
 	return &WepiController{
 		pathRegexs: make([]*PathReader, 0),
@@ -22,6 +23,7 @@ func Get() *WepiController {
 func (w *WepiController) AddRoutesHeader(header string) {
 	w.header = header
 }
+
 func (w *WepiController) AddAllowedCORS(cors string) {
 	w.cors[cors] = true
 }
@@ -34,7 +36,7 @@ func (w *WepiController) isOriginAllowed(origin string) bool {
 	return ok
 }
 
-// composed routes to add to wepi controller
+// WepiComposedRoute holds a composed route to add to the controller.
 type WepiComposedRoute struct {
 	path   string
 	route  *Route
@@ -45,6 +47,7 @@ func (w *WepiController) addRoute(converter *WepiComposedRoute) {
 	w.addPattern(converter.path)
 	w.routes.Store(converter.path+converter.method, converter.route)
 }
+
 func (w *WepiController) ShowErrors() bool {
 	return w.showErrors
 }

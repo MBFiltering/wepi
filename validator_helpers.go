@@ -21,7 +21,7 @@ func getValidationError(er validator.FieldError, mainStruct any) string {
 	}
 }
 
-// GetJSONFieldName returns the JSON tag for the struct field in the validation error
+// GetJSONFieldName returns the JSON tag name for the struct field referenced by a validation error.
 func GetJSONFieldName(e validator.FieldError, mainStruct any) (res string) {
 	defer func() {
 		if err := recover(); err != nil {
@@ -36,7 +36,6 @@ func GetJSONFieldName(e validator.FieldError, mainStruct any) (res string) {
 	}
 
 	ns = ns[1:]
-
 	t := reflect.TypeOf(mainStruct)
 
 	// Walk through nested fields
@@ -51,7 +50,6 @@ func GetJSONFieldName(e validator.FieldError, mainStruct any) (res string) {
 			return e.Field()
 		}
 
-		// This is the field you want
 		tag := field.Tag.Get("json")
 		if tag == "" {
 			tag = e.Field()
@@ -64,12 +62,11 @@ func GetJSONFieldName(e validator.FieldError, mainStruct any) (res string) {
 			return allNames
 		}
 
-		t = field.Type // drill down
-
+		t = field.Type
 		if t.Kind() != reflect.Struct {
-			return e.Field() // Cannot go deeper
+			return e.Field()
 		}
-
 	}
-	return e.Field() // fallbac
+
+	return e.Field()
 }

@@ -1,20 +1,16 @@
 package wepi
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
 )
 
-//number type convertions
-
 var floatType = reflect.TypeOf(float64(0))
 var stringType = reflect.TypeOf("")
 var intType = reflect.TypeOf(int64(0))
 
-func getFloat(unk interface{}) (float64, error) {
-
+func getFloat(unk any) (float64, error) {
 	switch i := unk.(type) {
 	case float64:
 		return i, nil
@@ -43,14 +39,11 @@ func getFloat(unk interface{}) (float64, error) {
 	case string:
 		r, err := strconv.ParseInt(i, 0, 64)
 		if err != nil {
-
 			r, err := strconv.ParseFloat(i, 64)
-
 			if err != nil {
 				return 0, err
-			} else {
-				return r, nil
 			}
+			return r, nil
 		}
 		return getFloat(r)
 	default:
@@ -65,17 +58,14 @@ func getFloat(unk interface{}) (float64, error) {
 			r, err := strconv.ParseFloat(s, 64)
 			if err != nil {
 				return 0, err
-			} else {
-				return r, nil
 			}
-		} else {
-			return 0, errors.New(fmt.Sprintf("Value %v not covertible to float", i))
+			return r, nil
 		}
+		return 0, fmt.Errorf("value %v not convertible to float", i)
 	}
 }
 
-func getInt(unk interface{}) (int64, error) {
-
+func getInt(unk any) (int64, error) {
 	switch i := unk.(type) {
 	case float64:
 		return int64(i), nil
@@ -102,15 +92,11 @@ func getInt(unk interface{}) (int64, error) {
 	case uint:
 		return int64(i), nil
 	case string:
-
 		r, err := strconv.ParseInt(i, 0, 64)
-
 		if err != nil {
 			return 0, err
-		} else {
-			return r, nil
 		}
-
+		return r, nil
 	default:
 		v := reflect.ValueOf(unk)
 		v = reflect.Indirect(v)
@@ -123,11 +109,9 @@ func getInt(unk interface{}) (int64, error) {
 			r, err := strconv.ParseInt(s, 0, 64)
 			if err != nil {
 				return 0, err
-			} else {
-				return r, nil
 			}
-		} else {
-			return 0, errors.New(fmt.Sprintf("Value %v not covertible to int", i))
+			return r, nil
 		}
+		return 0, fmt.Errorf("value %v not convertible to int", i)
 	}
 }

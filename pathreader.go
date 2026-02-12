@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// matcher to find
 var matcher = "([^/]+)"
 
+// PathReader holds a compiled regex pattern for matching URL path templates.
 type PathReader struct {
 	keys    []string
 	pattern string
@@ -22,7 +22,6 @@ func (w *WepiController) addPattern(path string) {
 	if len(keys) > 0 {
 		w.addRegex(reg, keys, path)
 	}
-
 }
 
 func (w *WepiController) addRegex(regex *regexp.Regexp, keys []string, pattern string) {
@@ -40,7 +39,6 @@ func (w *WepiController) checkPatternsForPath(path string) (map[string]string, s
 }
 
 func (w *WepiController) loadRouteFromRequest(path string, method string) (newPath string, _ *Route, pathPatternParams map[string]string) {
-
 	pathPatternParams, foundPatternPath := w.checkPatternsForPath(path)
 
 	if foundPatternPath != "" {
@@ -49,29 +47,24 @@ func (w *WepiController) loadRouteFromRequest(path string, method string) (newPa
 		pathPatternParams = nil
 	}
 
-	//load path from sync map
 	r, ok := w.routes.Load(path + method)
-
 	if !ok {
 		return "", nil, nil
 	}
 
 	return path, r.(*Route), pathPatternParams
-
 }
 
 func buildRegexFromTemplate(template string) (*regexp.Regexp, []string) {
 	re := regexp.MustCompile(`\{([^{}]+)\}`)
 	var keys []string
 
-	// Replace placeholders with regex groups
 	pattern := re.ReplaceAllStringFunc(template, func(s string) string {
 		m := re.FindStringSubmatch(s)
 		keys = append(keys, m[1])
 		return matcher
 	})
 
-	// Compile the pattern
 	pattern = "^" + pattern + "$"
 
 	if len(keys) == 0 {
@@ -83,7 +76,6 @@ func buildRegexFromTemplate(template string) (*regexp.Regexp, []string) {
 		return nil, nil
 	}
 
-	// log.Printf("Adding Path:"+template+" pattern: "+pattern+" for keys: %v", keys)
 	compiledRe, err := regexp.Compile(pattern)
 	if err != nil {
 		log.Println(err)
@@ -95,11 +87,11 @@ func buildRegexFromTemplate(template string) (*regexp.Regexp, []string) {
 func extractPatternValues(re *regexp.Regexp, keys []string, path string) map[string]string {
 	match := re.FindStringSubmatch(path)
 	if match == nil {
-		return nil // No match found
+		return nil
 	}
 	values := make(map[string]string)
 	for i, key := range keys {
-		values[key] = match[i+1] // match[0] is the full match
+		values[key] = match[i+1]
 	}
 	return values
 }
