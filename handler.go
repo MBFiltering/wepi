@@ -14,19 +14,28 @@ import (
 )
 
 // Run processes incoming HTTP requests through the wepi routing system.
+// It matches the request path and method to a registered route, parses the request
+// body into the appropriate type (JSON struct, form values, or query params),
+// runs validation and middlewares, then calls the handler and writes the response.
+// Returns (true, nil) if the route was handled, (false, nil) if no route matched.
 func (w *WepiController) Run(pathHead string, req *http.Request, wr http.ResponseWriter) (bool, error) {
+	// Strip the base path prefix so route matching works on the relative path
 	path := strings.TrimPrefix(req.URL.Path, pathHead)
 
+	// Treat PUT as POST — wepi routes only distinguish GET vs POST
 	if req.Method == http.MethodPut {
 		req.Method = http.MethodPost
 	}
 
+	// Handle CORS preflight (OPTIONS) requests before route matching
 	if w.optionsInterceptor(path, wr, req) {
 		return true, nil
 	}
 
+	// Look up the route by path and method; also extracts path template params (e.g. {id})
 	path, route, pathParams := w.loadRouteFromRequest(path, req.Method)
 
+	// No matching route found — return false so the caller can try other handlers
 	if path == "" {
 		return false, nil
 	}
@@ -36,12 +45,17 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		return false, errors.New("route " + route.route + " not same method " + req.Method)
 	}
 
+	// Extract the handler function and its first parameter type via reflection.
+	// stType will be either a struct type (for JSON routes) or ParamsManager (for simple routes).
 	handlerFunc, stType, err := validateAndExtractRouteFunc(route)
 	if err != nil {
 		wr.WriteHeader(http.StatusInternalServerError)
 		return true, fmt.Errorf("error on route: "+route.route+", on path "+path+":", err)
 	}
 
+	// Parse the request body based on Content-Type.
+	// For GET: returns query params as map. For JSON POST: decodes into struct.
+	// For form POST: parses form values, optionally unmarshals into struct.
 	values, structValue, err := readRequestValues(req, stType)
 	if err != nil {
 		wr.WriteHeader(http.StatusBadRequest)
@@ -62,13 +76,16 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 
 	params := GetParamsManager(values)
 
+	// Merge URL path template parameters (e.g. {id}) into the params manager
 	if pathParams != nil {
 		for k, v := range pathParams {
 			params.data[k] = v
 		}
 	}
 
-	// First element in function is ParamsManager meaning simple function type
+	// Build the argument list for the handler function.
+	// Simple routes (ParamsManager as first arg) get: (ParamsManager, *http.Request)
+	// Struct routes get: (T, ParamsManager, *http.Request) with struct validation.
 	if stType == reflect.TypeOf((*ParamsManager)(nil)).Elem() {
 		if hasStructBody {
 			log.Println(errors.New("this request doesnt contain a params manager"))
@@ -82,11 +99,13 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 			reflect.ValueOf(req), // *http.Request
 		}
 	} else {
+		// Struct route: validate the deserialized struct using go-playground/validator tags
 		stValue = structValue
 
 		validatorSingle := validatorSingleton
 		validateValue := stValue.Elem()
 
+		// Unwrap pointer if the struct type is a pointer-to-struct
 		if validateValue.Kind() == reflect.Pointer {
 			validateValue = validateValue.Elem()
 		}
@@ -125,7 +144,8 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		}
 	}
 
-	// Handle middlewares
+	// Run middlewares in order. If a middleware returns a CustomResponse,
+	// short-circuit: write that response and stop (don't call the handler).
 	for _, middleware := range route.Middlewares {
 		if middleware != nil {
 			c, err := middleware(stValue.Elem(), params, req)
@@ -149,10 +169,11 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		}
 	}
 
-	// Call the handler function
+	// Call the handler function via reflection.
+	// Handler returns: (result, *CustomResponse, error)
 	results := handlerFunc.Call(args)
 
-	// Check for error
+	// Check the third return value (error) first — if present, fail immediately
 	if len(results) > 2 && !results[2].IsNil() {
 		err := results[2].Interface().(error)
 		log.Println("Handler returned error:", err)
@@ -164,7 +185,8 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		return true, fmt.Errorf("handler returned error: %v", err)
 	}
 
-	// Get custom response from handler function
+	// Extract the optional CustomResponse (second return value).
+	// Handlers use this to override status codes, headers, or the entire body.
 	var custom *CustomResponse
 	if len(results) > 1 && !results[1].IsNil() {
 		custom = results[1].Interface().(*CustomResponse)
@@ -172,6 +194,9 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		custom = nil
 	}
 
+	// Determine the response type from the first return value.
+	// Supported types: string (text/html), io.Reader (file download),
+	// struct/map (JSON), or nil (only valid if CustomResponse provides the body).
 	resultInterface := results[0].Interface()
 	resultValue := reflect.ValueOf(resultInterface)
 
@@ -203,6 +228,7 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		wr.Header().Add("Content-Type", "application/json")
 	}
 
+	// Apply CustomResponse overrides (headers, status, body) if provided
 	body := []byte(js)
 	status := 200
 
@@ -222,6 +248,8 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		}
 	}
 
+	// If the handler returned an io.Reader, stream it directly to the client.
+	// Default to attachment disposition unless custom headers were set.
 	if r, ok := resultInterface.(io.Reader); ok {
 		if rc, ok := resultInterface.(io.Closer); ok {
 			defer rc.Close()

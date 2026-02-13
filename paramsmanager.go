@@ -97,10 +97,15 @@ func GetBool(m map[string]any, s string) bool {
 	return false
 }
 
+// Pre-computed reflect types used as conversion targets in getFloat/getInt
 var floatType = reflect.TypeOf(float64(0))
 var stringType = reflect.TypeOf("")
 var intType = reflect.TypeOf(int64(0))
 
+// getFloat converts an unknown value to float64. It handles:
+//  1. Direct numeric types (float32/64, int8-64, uint8-64) via type switch
+//  2. String values by trying ParseInt first (preserves precision), then ParseFloat
+//  3. Any other type via reflection: attempts Convert() to float64, then to string + parse
 func getFloat(unk any) (float64, error) {
 	switch i := unk.(type) {
 	case float64:
@@ -128,6 +133,7 @@ func getFloat(unk any) (float64, error) {
 	case uint:
 		return float64(i), nil
 	case string:
+		// Try integer parse first for full precision, fall back to float parse
 		r, err := strconv.ParseInt(i, 0, 64)
 		if err != nil {
 			r, err := strconv.ParseFloat(i, 64)
@@ -138,6 +144,7 @@ func getFloat(unk any) (float64, error) {
 		}
 		return getFloat(r)
 	default:
+		// Reflection fallback: try to convert the value to float64 or string
 		v := reflect.ValueOf(unk)
 		v = reflect.Indirect(v)
 		if v.Type().ConvertibleTo(floatType) {
@@ -156,6 +163,10 @@ func getFloat(unk any) (float64, error) {
 	}
 }
 
+// getInt converts an unknown value to int64. It handles:
+//  1. Direct numeric types (float32/64, int8-64, uint8-64) via type switch
+//  2. String values via ParseInt
+//  3. Any other type via reflection: attempts Convert() to int64, then to string + parse
 func getInt(unk any) (int64, error) {
 	switch i := unk.(type) {
 	case float64:
