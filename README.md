@@ -18,26 +18,46 @@ import (
     "github.com/MBFiltering/wepi"
 )
 
-func main() {
-    w := wepi.Get()
+var app = wepi.Get()
 
-    // GET route returning JSON
-    wepi.AddGET[map[string]string](w, "/hello", func(params wepi.ParamsManager, req *http.Request) (map[string]string, *wepi.CustomResponse, error) {
-        name := params.GetString("name", "world")
-        return map[string]string{"message": "hello " + name}, nil, nil
-    })
+func main() {
+    CreateRoutes()
 
     http.HandleFunc("/", func(wr http.ResponseWriter, req *http.Request) {
-        w.Run("", req, wr)
+        app.Run("", req, wr)
     })
-
     http.ListenAndServe(":8080", nil)
+}
+
+func CreateRoutes() {
+    app.AddAllowedCORS("*")
+
+    wepi.AddGET(app, "/hello", HelloHandler, nil)
+    wepi.AddJsonPOST(app, "/hello", PostHelloHandler, nil)
+}
+
+// HelloHandler returns a greeting using the name query parameter
+func HelloHandler(params wepi.ParamsManager, req *http.Request) (map[string]string, *wepi.CustomResponse, error) {
+    name := params.GetString("name", "world")
+    return map[string]string{"message": "hello " + name}, nil, nil
+}
+
+type HelloInput struct {
+    Name string `json:"name" validate:"required"`
+}
+
+// PostHelloHandler creates a greeting from a JSON body
+func PostHelloHandler(st HelloInput, params wepi.ParamsManager, req *http.Request) (map[string]string, *wepi.CustomResponse, error) {
+    return map[string]string{"message": "hello " + st.Name}, nil, nil
 }
 ```
 
 ```bash
 curl http://localhost:8080/hello?name=alice
 # {"message":"hello alice"}
+
+curl -X POST http://localhost:8080/hello -H "Content-Type: application/json" -d '{"name":"bob"}'
+# {"message":"hello bob"}
 ```
 
 ## Registering Routes
@@ -45,25 +65,28 @@ curl http://localhost:8080/hello?name=alice
 ### GET routes
 
 ```go
-wepi.AddGET[ResponseType](controller, "/path", handler, middlewares...)
+wepi.AddGET(controller, "/path", handler, middlewares...)
 ```
 
 The handler receives a `ParamsManager` for accessing query parameters:
 
 ```go
-wepi.AddGET[map[string]any](w, "/users", func(params wepi.ParamsManager, req *http.Request) (map[string]any, *wepi.CustomResponse, error) {
+// GetUserList returns a paginated list of users
+func GetUserList(params wepi.ParamsManager, req *http.Request) (map[string]any, *wepi.CustomResponse, error) {
     page, _ := params.GetInt64("page")
     return map[string]any{"page": page}, nil, nil
-})
+}
+
+wepi.AddGET(app, "/users", GetUserList, authMiddleware)
 ```
 
 ### POST routes with JSON body
 
 ```go
-wepi.AddJsonPOST[InputStruct, ResponseType](controller, "/path", handler, middlewares...)
+wepi.AddJsonPOST(controller, "/path", handler, middlewares...)
 ```
 
-The request body is automatically deserialized into `InputStruct` and validated using `go-playground/validator` tags:
+The request body is automatically deserialized into the input struct and validated using `go-playground/validator` tags:
 
 ```go
 type CreateUser struct {
@@ -71,10 +94,13 @@ type CreateUser struct {
     Email string `json:"email" validate:"required,email"`
 }
 
-wepi.AddJsonPOST[CreateUser, map[string]string](w, "/users", func(user CreateUser, params wepi.ParamsManager, req *http.Request) (map[string]string, *wepi.CustomResponse, error) {
+// PostCreateUser creates a new user from the JSON body
+func PostCreateUser(user CreateUser, params wepi.ParamsManager, req *http.Request) (map[string]string, *wepi.CustomResponse, error) {
     // user is already validated — Name and Email are guaranteed non-empty
     return map[string]string{"created": user.Name}, nil, nil
-})
+}
+
+wepi.AddJsonPOST(app, "/users", PostCreateUser, authMiddleware)
 ```
 
 If validation fails, wepi automatically returns `422 Unprocessable Entity` with a JSON error body listing each field violation.
@@ -82,16 +108,19 @@ If validation fails, wepi automatically returns `422 Unprocessable Entity` with 
 ### POST routes with form data
 
 ```go
-wepi.AddFormPost[ResponseType](controller, "/path", handler, middlewares...)
+wepi.AddFormPost(controller, "/path", handler, middlewares...)
 ```
 
 Form values are accessed through `ParamsManager`:
 
 ```go
-wepi.AddFormPost[string](w, "/login", func(params wepi.ParamsManager, req *http.Request) (string, *wepi.CustomResponse, error) {
+// PostLogin handles form-based login
+func PostLogin(params wepi.ParamsManager, req *http.Request) (string, *wepi.CustomResponse, error) {
     username := params.GetString("username", "")
     return "welcome " + username, nil, nil
-})
+}
+
+wepi.AddFormPost(app, "/login", PostLogin, nil)
 ```
 
 ## Path Parameters
@@ -99,12 +128,19 @@ wepi.AddFormPost[string](w, "/login", func(params wepi.ParamsManager, req *http.
 Use `{param}` placeholders in route paths. Values are available via `ParamsManager`:
 
 ```go
-wepi.AddGET[map[string]string](w, "/users/{id}/posts/{postId}", func(params wepi.ParamsManager, req *http.Request) (map[string]string, *wepi.CustomResponse, error) {
-    return map[string]string{
-        "userId": params.GetString("id", ""),
-        "postId": params.GetString("postId", ""),
-    }, nil, nil
-})
+// GetDeviceDetails returns details for a specific device
+func GetDeviceDetails(params wepi.ParamsManager, req *http.Request) (map[string]string, *wepi.CustomResponse, error) {
+    return map[string]string{"id": params.GetString("id", "")}, nil, nil
+}
+
+// PostSyncDevice triggers a sync command for a device
+func PostSyncDevice(st SyncInput, params wepi.ParamsManager, req *http.Request) (map[string]string, *wepi.CustomResponse, error) {
+    deviceID := params.GetString("id", "")
+    return map[string]string{"synced": deviceID}, nil, nil
+}
+
+wepi.AddGET(app, "/device/{id}", GetDeviceDetails, authMiddleware)
+wepi.AddJsonPOST(app, "/device/{id}/sync", PostSyncDevice, authMiddleware)
 ```
 
 ## Response Types
@@ -122,12 +158,15 @@ Handlers return `(T, *CustomResponse, error)`. The response type is determined b
 Use `CustomResponse` to override status codes, headers, or the body:
 
 ```go
-wepi.AddGET[string](w, "/created", func(params wepi.ParamsManager, req *http.Request) (string, *wepi.CustomResponse, error) {
+// PostCreateItem creates an item and returns 201 with a custom JSON body
+func PostCreateItem(st ItemInput, params wepi.ParamsManager, req *http.Request) (string, *wepi.CustomResponse, error) {
     return "", wepi.Custom().
         SetStatus(http.StatusCreated).
         SetBodyString(`{"id": 1}`).
         SetHeader("Content-Type", "application/json"), nil
-})
+}
+
+wepi.AddJsonPOST(app, "/items", PostCreateItem, authMiddleware)
 ```
 
 Available methods: `SetStatus(int)`, `SetBody([]byte)`, `SetBodyString(string)`, `AddHeader(k, v)`, `SetHeader(k, v)`. All methods return `*CustomResponse` for chaining.
@@ -139,33 +178,43 @@ Middlewares run before the handler. Return `(*CustomResponse, error)`:
 - Return `(*CustomResponse, nil)` to short-circuit and send that response
 - Return `(nil, error)` to abort with 500
 
+Pass `nil` for public routes that don't need middleware.
+
 ```go
-authMiddleware := func(value any, params wepi.ParamsManager, req *http.Request) (*wepi.CustomResponse, error) {
+// authMiddleware validates the request token and attaches user data to the context
+func authMiddleware(value any, params wepi.ParamsManager, req *http.Request) (*wepi.CustomResponse, error) {
     token := req.Header.Get("Authorization")
     if token == "" {
-        return wepi.Custom().SetStatus(401).SetBodyString("unauthorized"), nil
+        return wepi.Custom().SetStatus(http.StatusUnauthorized).SetBodyString("unauthorized"), nil
     }
     // Store data for the handler to use
-    params.SetAdditionalData("user", "alice")
+    params.SetAdditionalData("userID", "123")
     return nil, nil
 }
 
-wepi.AddGET[string](w, "/protected", func(params wepi.ParamsManager, req *http.Request) (string, *wepi.CustomResponse, error) {
-    user := params.GetAdditionalData("user").(string)
-    return "hello " + user, nil, nil
-}, authMiddleware)
+// GetProfile returns the authenticated user's profile
+func GetProfile(params wepi.ParamsManager, req *http.Request) (map[string]string, *wepi.CustomResponse, error) {
+    userID := params.GetAdditionalData("userID").(string)
+    return map[string]string{"id": userID}, nil, nil
+}
+
+// Protected route — requires auth
+wepi.AddGET(app, "/profile", GetProfile, authMiddleware)
+
+// Public route — no auth needed
+wepi.AddJsonPOST(app, "/contact", PostContact, nil)
 ```
 
 ## CORS
 
 ```go
-w := wepi.Get()
+app := wepi.Get()
 
 // Allow a specific origin
-w.AddAllowedCORS("https://example.com")
+app.AddAllowedCORS("https://example.com")
 
 // Or allow all origins
-w.AddAllowedCORS("*")
+app.AddAllowedCORS("*")
 ```
 
 When configured, wepi automatically handles `OPTIONS` preflight requests for any registered route, responding with `204 No Content` and the appropriate `Access-Control-Allow-*` headers.
@@ -190,7 +239,7 @@ params.GetAdditionalData("key")          // retrieve extra data
 
 - **Validation errors** return `422` with a JSON body listing field-level errors
 - **Handler errors** (third return value) return `500`
-- Call `w.SetShowErrors()` to include error messages in response bodies (useful for development)
+- Call `app.SetShowErrors()` to include error messages in response bodies (useful for development)
 
 ## Route Prefix
 
@@ -199,7 +248,7 @@ Strip a path prefix before route matching:
 ```go
 // Routes are registered as "/users", but the full URL is "/api/v1/users"
 http.HandleFunc("/api/v1/", func(wr http.ResponseWriter, req *http.Request) {
-    w.Run("/api/v1", req, wr)
+    app.Run("/api/v1", req, wr)
 })
 ```
 
