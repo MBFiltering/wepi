@@ -9,20 +9,11 @@ import (
 )
 
 // readRequestValues parses the incoming request based on method and Content-Type.
-// It returns a flat map of values (for ParamsManager), and optionally a reflect.Value
-// containing the decoded struct (for typed routes).
-//
-// Routing logic:
-//   - GET requests: parse query string into a flat map
-//   - POST with Content-Type application/json: decode body into the expected struct type
-//   - POST with form data: parse form values, then attempt to unmarshal into struct
-//     by round-tripping through JSON (map -> JSON string -> struct)
 func readRequestValues(req *http.Request, structType reflect.Type) (map[string]any, reflect.Value, error) {
 	if req.Method == http.MethodGet {
 		return GetURLQuery(req.URL.Query()), reflect.Value{}, nil
 	}
 
-	// JSON body: decode directly into the expected struct type via reflection
 	if req.Header.Get("Content-Type") == "application/json" {
 		stValue := reflect.New(structType)
 		err := json.NewDecoder(req.Body).Decode(stValue.Interface())
@@ -32,15 +23,11 @@ func readRequestValues(req *http.Request, structType reflect.Type) (map[string]a
 		return nil, stValue, nil
 	}
 
-	// Form-encoded body: parse into flat map
 	values, err := GetPostFormValues(req)
 	if err != nil {
 		return nil, reflect.Value{}, err
 	}
 
-	// If the route expects a struct (not ParamsManager), try to convert the form
-	// values map into the struct by marshaling to JSON and back. This allows form
-	// data to populate typed structs with json tags.
 	if structType != reflect.TypeOf((*ParamsManager)(nil)).Elem() {
 		jsonstr, err := Jsonify(values)
 		if err == nil {
