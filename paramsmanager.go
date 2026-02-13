@@ -127,6 +127,7 @@ func getFloat(unk any) (float64, error) {
 	case uint:
 		return float64(i), nil
 	case string:
+		// Try int parse first for precision, fall back to float
 		r, err := strconv.ParseInt(i, 0, 64)
 		if err != nil {
 			r, err := strconv.ParseFloat(i, 64)
@@ -137,6 +138,7 @@ func getFloat(unk any) (float64, error) {
 		}
 		return getFloat(r)
 	default:
+		// Reflection fallback
 		v := reflect.ValueOf(unk)
 		v = reflect.Indirect(v)
 		if v.Type().ConvertibleTo(floatType) {

@@ -18,18 +18,21 @@ import (
 func (w *WepiController) Run(pathHead string, req *http.Request, wr http.ResponseWriter) (bool, error) {
 	path := strings.TrimPrefix(req.URL.Path, pathHead)
 
+	// Treat PUT as POST
 	if req.Method == http.MethodPut {
 		req.Method = http.MethodPost
 	}
 
+	// Handle CORS preflight
 	if w.optionsInterceptor(path, wr, req) {
 		return true, nil
 	}
 
+	// Match path and method to a registered route
 	path, route, pathParams := w.loadRouteFromRequest(path, req.Method)
 
 	if path == "" {
-		return false, nil
+		return false, nil // No matching route
 	}
 
 	if req.Method != route.method {
@@ -37,12 +40,14 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		return false, errors.New("route " + route.route + " not same method " + req.Method)
 	}
 
+	// Extract handler func and its first param type (struct or ParamsManager)
 	handlerFunc, stType, err := validateAndExtractRouteFunc(route)
 	if err != nil {
 		wr.WriteHeader(http.StatusInternalServerError)
 		return true, fmt.Errorf("error on route: "+route.route+", on path "+path+":", err)
 	}
 
+	// Parse request body based on Content-Type
 	values, structValue, err := readRequestValues(req, stType)
 	if err != nil {
 		wr.WriteHeader(http.StatusBadRequest)
@@ -63,12 +68,14 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 
 	params := GetParamsManager(values)
 
+	// Merge URL path params (e.g. {id}) into the params manager
 	if pathParams != nil {
 		for k, v := range pathParams {
 			params.data[k] = v
 		}
 	}
 
+	// Build argument list for the handler function
 	if stType == reflect.TypeOf((*ParamsManager)(nil)).Elem() {
 		if hasStructBody {
 			log.Println(errors.New("this request doesnt contain a params manager"))
@@ -82,6 +89,7 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 			reflect.ValueOf(req),
 		}
 	} else {
+		// Struct route: validate with go-playground/validator tags
 		stValue = structValue
 
 		validatorSingle := validatorSingleton
@@ -118,12 +126,14 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		}
 	}
 
+	// Set CORS headers
 	if len(w.cors) > 0 {
 		if w.isOriginAllowed(req.Header.Get("Origin")) {
 			wr.Header().Set("Access-Control-Allow-Origin", req.Header.Get("Origin"))
 		}
 	}
 
+	// Run middlewares; short-circuit if one returns a CustomResponse
 	for _, middleware := range route.Middlewares {
 		if middleware != nil {
 			c, err := middleware(stValue.Elem(), params, req)
@@ -147,8 +157,10 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		}
 	}
 
+	// Call handler: returns (result, *CustomResponse, error)
 	results := handlerFunc.Call(args)
 
+	// Check error (third return value)
 	if len(results) > 2 && !results[2].IsNil() {
 		err := results[2].Interface().(error)
 		log.Println("Handler returned error:", err)
@@ -160,6 +172,7 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		return true, fmt.Errorf("handler returned error: %v", err)
 	}
 
+	// Extract optional CustomResponse (second return value)
 	var custom *CustomResponse
 	if len(results) > 1 && !results[1].IsNil() {
 		custom = results[1].Interface().(*CustomResponse)
@@ -167,6 +180,7 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		custom = nil
 	}
 
+	// Determine response type: string (text/html), io.Reader, or struct/map (JSON)
 	resultInterface := results[0].Interface()
 	resultValue := reflect.ValueOf(resultInterface)
 
@@ -198,6 +212,7 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		wr.Header().Add("Content-Type", "application/json")
 	}
 
+	// Apply CustomResponse overrides if provided
 	body := []byte(js)
 	status := 200
 
@@ -217,6 +232,7 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 		}
 	}
 
+	// Stream io.Reader directly to client
 	if r, ok := resultInterface.(io.Reader); ok {
 		if rc, ok := resultInterface.(io.Closer); ok {
 			defer rc.Close()

@@ -74,6 +74,7 @@ func buildRegexFromTemplate(template string) (*regexp.Regexp, []string) {
 		return nil, nil
 	}
 
+	// Reject ambiguous consecutive captures like {a}{b}
 	if strings.Contains(pattern, matcher+matcher) {
 		log.Println("not valid pattern: " + pattern + " for path: " + template)
 		return nil, nil

@@ -14,6 +14,7 @@ func readRequestValues(req *http.Request, structType reflect.Type) (map[string]a
 		return GetURLQuery(req.URL.Query()), reflect.Value{}, nil
 	}
 
+	// JSON body: decode directly into the expected struct type
 	if req.Header.Get("Content-Type") == "application/json" {
 		stValue := reflect.New(structType)
 		err := json.NewDecoder(req.Body).Decode(stValue.Interface())
@@ -28,6 +29,7 @@ func readRequestValues(req *http.Request, structType reflect.Type) (map[string]a
 		return nil, reflect.Value{}, err
 	}
 
+	// For struct routes, convert form values to struct via JSON round-trip
 	if structType != reflect.TypeOf((*ParamsManager)(nil)).Elem() {
 		jsonstr, err := Jsonify(values)
 		if err == nil {

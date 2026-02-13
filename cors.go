@@ -12,6 +12,7 @@ func (wep *WepiController) optionsInterceptor(path string, w http.ResponseWriter
 		return false
 	}
 
+	// Check if path has a registered GET or POST route
 	returnCors := false
 	pathFound, _, _ := wep.loadRouteFromRequest(path, http.MethodGet)
 	if pathFound != "" {
