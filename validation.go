@@ -18,16 +18,23 @@ func validateAndExtractRouteFunc(route *Route) (handlerFunc reflect.Value, struc
 		return reflect.Value{}, nil, errors.New("handler object is nil")
 	}
 
+	// RouteHandler is stored as `any` in Route, so we need reflection to access its fields
+	// since it can be either RouteHandlerWithStruct[T,R] or RouteHandlerSimple[R]
 	rhValue := reflect.ValueOf(route.RouteHandler)
 
+	// Composers store RouteHandlers as pointers (*RouteHandlerWithStruct, *RouteHandlerSimple),
+	// so we unwrap the pointer to reach the underlying struct
 	if rhValue.Kind() == reflect.Ptr {
 		rhValue = rhValue.Elem()
 	}
 
+	// Both RouteHandler variants are structs — anything else means a bad registration
 	if rhValue.Kind() != reflect.Struct {
 		return reflect.Value{}, nil, fmt.Errorf("invalid RouteHandler type %v", rhValue.Kind())
 	}
 
+	// Both RouteHandlerWithStruct and RouteHandlerSimple share a "Handler" field by convention,
+	// so we can extract it by name regardless of which generic variant was used
 	handlerFunc = rhValue.FieldByName("Handler")
 
 	if !handlerFunc.IsValid() {
@@ -36,10 +43,14 @@ func validateAndExtractRouteFunc(route *Route) (handlerFunc reflect.Value, struc
 
 	handlerType := handlerFunc.Type()
 
+	// The handler must have at least one parameter — this is the first arg that tells us
+	// whether it's a struct route (T) or a simple route (ParamsManager)
 	if handlerType.NumIn() < 1 {
 		return reflect.Value{}, nil, errors.New("handler function has insufficient parameters")
 	}
 
+	// The first parameter's type is what Run() uses to decide how to parse the request:
+	// if it's ParamsManager → query/form route, otherwise → JSON body deserialized into T
 	structType = handlerType.In(0)
 
 	return handlerFunc, structType, nil
