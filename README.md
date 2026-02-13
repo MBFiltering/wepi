@@ -153,6 +153,40 @@ Handlers return `(T, *CustomResponse, error)`. The response type is determined b
 | `string` | Written as `text/html` |
 | `io.Reader` | Streamed to client (file download) |
 
+```go
+// Returning a struct — serialized as JSON automatically
+type DeviceResponse struct {
+    ID     string `json:"id"`
+    Name   string `json:"name"`
+    Status string `json:"status"`
+}
+
+func GetDevice(params wepi.ParamsManager, req *http.Request) (DeviceResponse, *wepi.CustomResponse, error) {
+    return DeviceResponse{ID: params.GetString("id", ""), Name: "Phone", Status: "active"}, nil, nil
+}
+
+// Returning a map — also serialized as JSON
+func GetDeviceStatus(params wepi.ParamsManager, req *http.Request) (map[string]string, *wepi.CustomResponse, error) {
+    return map[string]string{"status": "active"}, nil, nil
+}
+
+// Returning a string — written as text/html
+func GetHealthCheck(params wepi.ParamsManager, req *http.Request) (string, *wepi.CustomResponse, error) {
+    return "ok", nil, nil
+}
+
+// Returning an io.Reader — streamed to the client (file download)
+func GetFileDownload(params wepi.ParamsManager, req *http.Request) (io.Reader, *wepi.CustomResponse, error) {
+    return strings.NewReader("file content"),
+        wepi.Custom().SetHeader("Content-Type", "application/octet-stream"), nil
+}
+
+wepi.AddGET(app, "/device/{id}", GetDevice, authMiddleware)
+wepi.AddGET(app, "/device/{id}/status", GetDeviceStatus, authMiddleware)
+wepi.AddGET(app, "/health", GetHealthCheck, nil)
+wepi.AddGET(app, "/download/{filename}", GetFileDownload, authMiddleware)
+```
+
 ## Custom Responses
 
 Use `CustomResponse` to override status codes, headers, or the body:
