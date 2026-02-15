@@ -13,9 +13,7 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-// Run processes incoming HTTP requests through the wepi routing system.
-// Returns (true, nil) if the route was handled, (false, nil) if no route matched.
-func (w *WepiController) Run(pathHead string, req *http.Request, wr http.ResponseWriter) (bool, error) {
+func (w *WepiController) runUnwrapped(pathHead string, req *http.Request, wr http.ResponseWriter) (bool, error) {
 	path := strings.TrimPrefix(req.URL.Path, pathHead)
 
 	// Treat PUT as POST
@@ -251,6 +249,17 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 	wr.Write(body)
 
 	return true, nil
+}
+
+// Run processes incoming HTTP requests through the wepi routing system.
+// Returns (true, nil) if the route was handled, (false, nil) if no route matched.
+// Returned errors are enriched with the request method and path.
+func (w *WepiController) Run(pathHead string, req *http.Request, wr http.ResponseWriter) (bool, error) {
+	handled, err := w.runUnwrapped(pathHead, req, wr)
+	if err != nil {
+		return handled, fmt.Errorf("%s %s: %w", req.Method, req.URL.Path, err)
+	}
+	return handled, nil
 }
 
 func copyHeader(dst, src http.Header) {
