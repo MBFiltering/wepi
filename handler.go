@@ -253,13 +253,13 @@ func (w *WepiController) Run(pathHead string, req *http.Request, wr http.Respons
 	return true, nil
 }
 
-// RunLogged wraps Run and logs any returned error with the request method and path.
-func (w *WepiController) RunLogged(pathHead string, req *http.Request, wr http.ResponseWriter) bool {
+// RunWrapped wraps Run and enriches any returned error with the request method and path.
+func (w *WepiController) RunWrapped(pathHead string, req *http.Request, wr http.ResponseWriter) (bool, error) {
 	handled, err := w.Run(pathHead, req, wr)
 	if err != nil {
-		log.Printf("[wepi] %s %s error: %v", req.Method, req.URL.Path, err)
+		return handled, fmt.Errorf("%s %s: %w", req.Method, req.URL.Path, err)
 	}
-	return handled
+	return handled, nil
 }
 
 func copyHeader(dst, src http.Header) {
