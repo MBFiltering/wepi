@@ -33,7 +33,7 @@ func TestAddGetWithStruct(t *testing.T) {
 		Name string `json:"name"`
 	}
 
-	AddGetWithStruct[Filter, string](w, "/search", func(st Filter, params ParamsManager, req *http.Request) (string, *CustomResponse, error) {
+	AddGetWithStruct(w, "/search", func(st Filter, params ParamsManager, req *http.Request) (string, *CustomResponse, error) {
 		return "ok", nil, nil
 	})
 

@@ -215,7 +215,7 @@ func TestRun_GetWithStruct_QueryParams(t *testing.T) {
 		Result string `json:"result"`
 	}
 
-	AddGetWithStruct[Filter, Output](w, "/search", func(st Filter, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
+	AddGetWithStruct(w, "/search", func(st Filter, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
 		return Output{Result: st.Name + ":" + st.Status}, nil, nil
 	})
 
@@ -243,7 +243,7 @@ func TestRun_GetWithStruct_Validation(t *testing.T) {
 		Email string `json:"email" validate:"required"`
 	}
 
-	AddGetWithStruct[Filter, string](w, "/validated-get", func(st Filter, params ParamsManager, req *http.Request) (string, *CustomResponse, error) {
+	AddGetWithStruct(w, "/validated-get", func(st Filter, params ParamsManager, req *http.Request) (string, *CustomResponse, error) {
 		return "ok", nil, nil
 	})
 
@@ -273,7 +273,7 @@ func TestRun_GetWithStruct_WithPathParams(t *testing.T) {
 		Sort string `json:"sort"`
 	}
 
-	AddGetWithStruct[Filter, Output](w, "/items/{id}", func(st Filter, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
+	AddGetWithStruct(w, "/items/{id}", func(st Filter, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
 		return Output{ID: params.GetString("id", ""), Sort: st.Sort}, nil, nil
 	})
 
