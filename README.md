@@ -34,6 +34,7 @@ func CreateRoutes() {
 
     wepi.AddGET(app, "/hello", HelloHandler, nil)
     wepi.AddJsonPOST(app, "/hello", PostHelloHandler, nil)
+    wepi.AddGetWithStruct(app, "/search", SearchHandler, nil)
 }
 
 // HelloHandler returns a greeting using the name query parameter
@@ -50,6 +51,16 @@ type HelloInput struct {
 func PostHelloHandler(st HelloInput, params wepi.ParamsManager, req *http.Request) (map[string]string, *wepi.CustomResponse, error) {
     return map[string]string{"message": "hello " + st.Name}, nil, nil
 }
+
+type SearchQuery struct {
+    Query string `json:"query" validate:"required"`
+    Page  string `json:"page"`
+}
+
+// SearchHandler deserializes query parameters into a typed struct
+func SearchHandler(sq SearchQuery, params wepi.ParamsManager, req *http.Request) (map[string]string, *wepi.CustomResponse, error) {
+    return map[string]string{"query": sq.Query, "page": sq.Page}, nil, nil
+}
 ```
 
 ```bash
@@ -58,6 +69,9 @@ curl http://localhost:8080/hello?name=alice
 
 curl -X POST http://localhost:8080/hello -H "Content-Type: application/json" -d '{"name":"bob"}'
 # {"message":"hello bob"}
+
+curl "http://localhost:8080/search?query=test&page=1"
+# {"page":"1","query":"test"}
 ```
 
 ## Registering Routes
@@ -79,6 +93,32 @@ func GetUserList(params wepi.ParamsManager, req *http.Request) (map[string]any, 
 
 wepi.AddGET(app, "/users", GetUserList, authMiddleware)
 ```
+
+### GET routes with struct
+
+```go
+wepi.AddGetWithStruct(controller, "/path", handler, middlewares...)
+```
+
+Query parameters are automatically deserialized into the input struct and validated using `go-playground/validator` tags — the same way `AddJsonPOST` works for request bodies:
+
+```go
+type UserFilter struct {
+    Status string `json:"status" validate:"required"`
+    Sort   string `json:"sort"`
+}
+
+// SearchUsers returns a filtered list of users from query parameters
+func SearchUsers(filter UserFilter, params wepi.ParamsManager, req *http.Request) ([]map[string]string, *wepi.CustomResponse, error) {
+    // filter.Status and filter.Sort are populated from ?status=...&sort=...
+    // params is still available for path parameters and additional data
+    return []map[string]string{{"status": filter.Status, "sort": filter.Sort}}, nil, nil
+}
+
+wepi.AddGetWithStruct(app, "/users/search", SearchUsers, authMiddleware)
+```
+
+If validation fails, wepi returns `422 Unprocessable Entity` with field-level errors, just like `AddJsonPOST`.
 
 ### POST routes with JSON body
 
@@ -304,7 +344,7 @@ handler.go          Run() — main request handling loop
 request.go          Request parsing (JSON, form, query)
 validation.go       Route handler extraction and struct validation
 cors.go             CORS preflight and origin checking
-composers.go        Route registration (AddGET, AddJsonPOST, AddFormPost)
+composers.go        Route registration (AddGET, AddGetWithStruct, AddJsonPOST, AddFormPost)
 customresponse.go   CustomResponse builder
 paramsmanager.go    ParamsManager and type conversion
 pathreader.go       URL path template matching
