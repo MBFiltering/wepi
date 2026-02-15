@@ -11,7 +11,24 @@ import (
 // readRequestValues parses the incoming request based on method and Content-Type.
 func readRequestValues(req *http.Request, structType reflect.Type) (map[string]any, reflect.Value, error) {
 	if req.Method == http.MethodGet {
-		return GetURLQuery(req.URL.Query()), reflect.Value{}, nil
+		values := GetURLQuery(req.URL.Query())
+
+		// If the handler expects a struct (not ParamsManager), populate it from query params
+		if structType != reflect.TypeOf((*ParamsManager)(nil)).Elem() {
+			jsonstr, err := Jsonify(values)
+			if err == nil {
+				stValue := reflect.New(structType)
+				err = json.Unmarshal([]byte(jsonstr), stValue.Interface())
+				if err == nil {
+					return values, stValue, nil
+				}
+			}
+			if err != nil {
+				log.Println(err)
+			}
+		}
+
+		return values, reflect.Value{}, nil
 	}
 
 	// JSON body: decode directly into the expected struct type

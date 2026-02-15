@@ -204,6 +204,99 @@ func TestRun_IOReaderResponse(t *testing.T) {
 	}
 }
 
+func TestRun_GetWithStruct_QueryParams(t *testing.T) {
+	w := setupController()
+
+	type Filter struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+	type Output struct {
+		Result string `json:"result"`
+	}
+
+	AddGetWithStruct[Filter, Output](w, "/search", func(st Filter, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
+		return Output{Result: st.Name + ":" + st.Status}, nil, nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/search?name=alice&status=active", nil)
+	rr := httptest.NewRecorder()
+
+	handled, err := w.Run("", req, rr)
+	if !handled || err != nil {
+		t.Fatalf("Run returned handled=%v, err=%v", handled, err)
+	}
+
+	var resp Output
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if resp.Result != "alice:active" {
+		t.Errorf("result = %q, want %q", resp.Result, "alice:active")
+	}
+}
+
+func TestRun_GetWithStruct_Validation(t *testing.T) {
+	w := setupController()
+
+	type Filter struct {
+		Email string `json:"email" validate:"required"`
+	}
+
+	AddGetWithStruct[Filter, string](w, "/validated-get", func(st Filter, params ParamsManager, req *http.Request) (string, *CustomResponse, error) {
+		return "ok", nil, nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/validated-get", nil)
+	rr := httptest.NewRecorder()
+
+	handled, err := w.Run("", req, rr)
+	if !handled {
+		t.Error("expected handled=true for validation error")
+	}
+	if err == nil {
+		t.Error("expected error for validation failure")
+	}
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+	}
+}
+
+func TestRun_GetWithStruct_WithPathParams(t *testing.T) {
+	w := setupController()
+
+	type Filter struct {
+		Sort string `json:"sort"`
+	}
+	type Output struct {
+		ID   string `json:"id"`
+		Sort string `json:"sort"`
+	}
+
+	AddGetWithStruct[Filter, Output](w, "/items/{id}", func(st Filter, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
+		return Output{ID: params.GetString("id", ""), Sort: st.Sort}, nil, nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/items/99?sort=desc", nil)
+	rr := httptest.NewRecorder()
+
+	handled, err := w.Run("", req, rr)
+	if !handled || err != nil {
+		t.Fatalf("Run returned handled=%v, err=%v", handled, err)
+	}
+
+	var resp Output
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if resp.ID != "99" {
+		t.Errorf("id = %q, want %q", resp.ID, "99")
+	}
+	if resp.Sort != "desc" {
+		t.Errorf("sort = %q, want %q", resp.Sort, "desc")
+	}
+}
+
 func TestRun_ValidationError(t *testing.T) {
 	w := setupController()
 

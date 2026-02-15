@@ -26,6 +26,27 @@ func TestAddJsonPOST(t *testing.T) {
 	}
 }
 
+func TestAddGetWithStruct(t *testing.T) {
+	w := Get()
+
+	type Filter struct {
+		Name string `json:"name"`
+	}
+
+	AddGetWithStruct[Filter, string](w, "/search", func(st Filter, params ParamsManager, req *http.Request) (string, *CustomResponse, error) {
+		return "ok", nil, nil
+	})
+
+	r, ok := w.routes.Load("/search" + GET)
+	if !ok {
+		t.Fatal("expected route to be registered")
+	}
+	route := r.(*Route)
+	if route.method != GET {
+		t.Errorf("method = %q, want %q", route.method, GET)
+	}
+}
+
 func TestAddGET(t *testing.T) {
 	w := Get()
 
