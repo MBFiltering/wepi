@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -322,5 +323,432 @@ func TestRun_ValidationError(t *testing.T) {
 	}
 	if rr.Code != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+	}
+}
+
+// --- Middleware and handler parameter matching tests ---
+
+func TestMiddleware_ReceivesSameStruct_POST(t *testing.T) {
+	w := setupController()
+
+	type Input struct {
+		Name  string `json:"name"`
+		Value int    `json:"value"`
+	}
+	type Output struct {
+		OK bool `json:"ok"`
+	}
+
+	var middlewareValue any
+	var middlewareParams ParamsManager
+	var handlerStruct Input
+	var handlerParams ParamsManager
+
+	middleware := func(value any, params ParamsManager, req *http.Request) (*CustomResponse, error) {
+		middlewareValue = value
+		middlewareParams = params
+		return nil, nil
+	}
+
+	AddJsonPOST[Input, Output](w, "/test-mw-struct-post", func(st Input, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
+		handlerStruct = st
+		handlerParams = params
+		return Output{OK: true}, nil, nil
+	}, middleware)
+
+	body := strings.NewReader(`{"name":"alice","value":42}`)
+	req := httptest.NewRequest(http.MethodPost, "/test-mw-struct-post?extra=hello", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	handled, err := w.Run("", req, rr)
+	if !handled || err != nil {
+		t.Fatalf("Run returned handled=%v, err=%v", handled, err)
+	}
+
+	// Middleware value should be the same concrete struct type as the handler receives
+	middlewareInput, ok := middlewareValue.(Input)
+	if !ok {
+		t.Fatalf("middleware value type = %T, want Input", middlewareValue)
+	}
+	if middlewareInput != handlerStruct {
+		t.Errorf("middleware struct = %+v, handler struct = %+v", middlewareInput, handlerStruct)
+	}
+
+	// Both should see the same query params
+	if middlewareParams.GetString("extra", "") != handlerParams.GetString("extra", "") {
+		t.Errorf("params mismatch: middleware extra=%q, handler extra=%q",
+			middlewareParams.GetString("extra", ""), handlerParams.GetString("extra", ""))
+	}
+}
+
+func TestMiddleware_ReceivesSameStruct_GETWithStruct(t *testing.T) {
+	w := setupController()
+
+	type Filter struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+	type Output struct {
+		OK bool `json:"ok"`
+	}
+
+	var middlewareValue any
+	var middlewareParams ParamsManager
+	var handlerStruct Filter
+	var handlerParams ParamsManager
+
+	middleware := func(value any, params ParamsManager, req *http.Request) (*CustomResponse, error) {
+		middlewareValue = value
+		middlewareParams = params
+		return nil, nil
+	}
+
+	AddGetWithStruct(w, "/test-mw-struct-get", func(st Filter, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
+		handlerStruct = st
+		handlerParams = params
+		return Output{OK: true}, nil, nil
+	}, middleware)
+
+	req := httptest.NewRequest(http.MethodGet, "/test-mw-struct-get?name=alice&status=active", nil)
+	rr := httptest.NewRecorder()
+
+	handled, err := w.Run("", req, rr)
+	if !handled || err != nil {
+		t.Fatalf("Run returned handled=%v, err=%v", handled, err)
+	}
+
+	// Middleware value should be the same concrete struct type
+	middlewareFilter, ok := middlewareValue.(Filter)
+	if !ok {
+		t.Fatalf("middleware value type = %T, want Filter", middlewareValue)
+	}
+	if middlewareFilter != handlerStruct {
+		t.Errorf("middleware struct = %+v, handler struct = %+v", middlewareFilter, handlerStruct)
+	}
+
+	// Both should see the same query params
+	if middlewareParams.GetString("name", "") != handlerParams.GetString("name", "") {
+		t.Errorf("params 'name' mismatch: middleware=%q, handler=%q",
+			middlewareParams.GetString("name", ""), handlerParams.GetString("name", ""))
+	}
+	if middlewareParams.GetString("status", "") != handlerParams.GetString("status", "") {
+		t.Errorf("params 'status' mismatch: middleware=%q, handler=%q",
+			middlewareParams.GetString("status", ""), handlerParams.GetString("status", ""))
+	}
+}
+
+func TestMiddleware_ReceivesSameParams_GETSimple(t *testing.T) {
+	w := setupController()
+
+	var middlewareValue any
+	var middlewareParams ParamsManager
+	var handlerParams ParamsManager
+
+	middleware := func(value any, params ParamsManager, req *http.Request) (*CustomResponse, error) {
+		middlewareValue = value
+		middlewareParams = params
+		return nil, nil
+	}
+
+	AddGET[string](w, "/test-mw-params/{id}", func(params ParamsManager, req *http.Request) (string, *CustomResponse, error) {
+		handlerParams = params
+		return "ok", nil, nil
+	}, middleware)
+
+	req := httptest.NewRequest(http.MethodGet, "/test-mw-params/99?color=blue", nil)
+	rr := httptest.NewRecorder()
+
+	handled, err := w.Run("", req, rr)
+	if !handled || err != nil {
+		t.Fatalf("Run returned handled=%v, err=%v", handled, err)
+	}
+
+	// Middleware and handler should see the same path params
+	if middlewareParams.GetString("id", "") != handlerParams.GetString("id", "") {
+		t.Errorf("path param 'id' mismatch: middleware=%q, handler=%q",
+			middlewareParams.GetString("id", ""), handlerParams.GetString("id", ""))
+	}
+
+	// Middleware and handler should see the same query params
+	if middlewareParams.GetString("color", "") != handlerParams.GetString("color", "") {
+		t.Errorf("query param 'color' mismatch: middleware=%q, handler=%q",
+			middlewareParams.GetString("color", ""), handlerParams.GetString("color", ""))
+	}
+
+	// For ParamsManager routes, middleware value should be ParamsManager (not reflect.Value)
+	_, ok := middlewareValue.(ParamsManager)
+	if !ok {
+		t.Errorf("middleware value type = %T, want ParamsManager", middlewareValue)
+	}
+}
+
+func TestMiddleware_ReceivesSameParams_POSTForm(t *testing.T) {
+	w := setupController()
+
+	var middlewareParams ParamsManager
+	var handlerParams ParamsManager
+
+	middleware := func(value any, params ParamsManager, req *http.Request) (*CustomResponse, error) {
+		middlewareParams = params
+		return nil, nil
+	}
+
+	AddFormPost[string](w, "/test-mw-form", func(params ParamsManager, req *http.Request) (string, *CustomResponse, error) {
+		handlerParams = params
+		return "ok", nil, nil
+	}, middleware)
+
+	body := strings.NewReader("field1=hello&field2=world")
+	req := httptest.NewRequest(http.MethodPost, "/test-mw-form", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	handled, err := w.Run("", req, rr)
+	if !handled || err != nil {
+		t.Fatalf("Run returned handled=%v, err=%v", handled, err)
+	}
+
+	if middlewareParams.GetString("field1", "") != handlerParams.GetString("field1", "") {
+		t.Errorf("param 'field1' mismatch: middleware=%q, handler=%q",
+			middlewareParams.GetString("field1", ""), handlerParams.GetString("field1", ""))
+	}
+	if middlewareParams.GetString("field2", "") != handlerParams.GetString("field2", "") {
+		t.Errorf("param 'field2' mismatch: middleware=%q, handler=%q",
+			middlewareParams.GetString("field2", ""), handlerParams.GetString("field2", ""))
+	}
+}
+
+// --- Pointer struct parameter tests ---
+
+func TestMiddleware_PointerStruct_POST(t *testing.T) {
+	w := setupController()
+
+	type Input struct {
+		Name string `json:"name"`
+	}
+	type Output struct {
+		OK bool `json:"ok"`
+	}
+
+	var middlewareValue any
+	var handlerSt *Input
+
+	middleware := func(value any, params ParamsManager, req *http.Request) (*CustomResponse, error) {
+		middlewareValue = value
+		return nil, nil
+	}
+
+	AddJsonPOST[*Input, Output](w, "/test-ptr-post", func(st *Input, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
+		handlerSt = st
+		return Output{OK: true}, nil, nil
+	}, middleware)
+
+	body := strings.NewReader(`{"name":"bob"}`)
+	req := httptest.NewRequest(http.MethodPost, "/test-ptr-post", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	handled, err := w.Run("", req, rr)
+	if !handled || err != nil {
+		t.Fatalf("Run returned handled=%v, err=%v", handled, err)
+	}
+
+	// Middleware should receive *Input (not Input, **Input, or reflect.Value)
+	middlewarePtr, ok := middlewareValue.(*Input)
+	if !ok {
+		t.Fatalf("middleware value type = %T, want *Input", middlewareValue)
+	}
+
+	// Both should point to the same underlying struct
+	if middlewarePtr != handlerSt {
+		t.Error("middleware and handler received different pointers")
+	}
+
+	// Verify the data is correct
+	if handlerSt == nil {
+		t.Fatal("handler received nil pointer")
+	}
+	if handlerSt.Name != "bob" {
+		t.Errorf("handler struct name = %q, want %q", handlerSt.Name, "bob")
+	}
+}
+
+func TestHandler_PointerStruct_ReceivesPointer_POST(t *testing.T) {
+	w := setupController()
+
+	type Input struct {
+		Name string `json:"name"`
+	}
+	type Output struct {
+		OK bool `json:"ok"`
+	}
+
+	var handlerArgType reflect.Type
+	var handlerArgKind reflect.Kind
+
+	AddJsonPOST[*Input, Output](w, "/test-ptr-handler-post", func(st *Input, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
+		handlerArgType = reflect.TypeOf(st)
+		handlerArgKind = reflect.ValueOf(st).Kind()
+		return Output{OK: true}, nil, nil
+	})
+
+	body := strings.NewReader(`{"name":"charlie"}`)
+	req := httptest.NewRequest(http.MethodPost, "/test-ptr-handler-post", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	handled, err := w.Run("", req, rr)
+	if !handled || err != nil {
+		t.Fatalf("Run returned handled=%v, err=%v", handled, err)
+	}
+
+	// Handler should receive *Input (pointer), not Input (value) or **Input (double pointer)
+	expectedType := reflect.TypeOf((*Input)(nil))
+	if handlerArgType != expectedType {
+		t.Errorf("handler arg type = %v, want %v", handlerArgType, expectedType)
+	}
+	if handlerArgKind != reflect.Pointer {
+		t.Errorf("handler arg kind = %v, want %v", handlerArgKind, reflect.Pointer)
+	}
+}
+
+func TestMiddleware_PointerStruct_GETWithStruct(t *testing.T) {
+	w := setupController()
+
+	type Filter struct {
+		Name string `json:"name"`
+	}
+	type Output struct {
+		OK bool `json:"ok"`
+	}
+
+	var middlewareValue any
+	var handlerSt *Filter
+
+	middleware := func(value any, params ParamsManager, req *http.Request) (*CustomResponse, error) {
+		middlewareValue = value
+		return nil, nil
+	}
+
+	AddGetWithStruct(w, "/test-ptr-get", func(st *Filter, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
+		handlerSt = st
+		return Output{OK: true}, nil, nil
+	}, middleware)
+
+	req := httptest.NewRequest(http.MethodGet, "/test-ptr-get?name=dan", nil)
+	rr := httptest.NewRecorder()
+
+	handled, err := w.Run("", req, rr)
+	if !handled || err != nil {
+		t.Fatalf("Run returned handled=%v, err=%v", handled, err)
+	}
+
+	// Middleware should receive *Filter (not Filter, **Filter, or reflect.Value)
+	middlewarePtr, ok := middlewareValue.(*Filter)
+	if !ok {
+		t.Fatalf("middleware value type = %T, want *Filter", middlewareValue)
+	}
+
+	// Both should point to the same underlying struct
+	if middlewarePtr != handlerSt {
+		t.Error("middleware and handler received different pointers")
+	}
+
+	// Verify the data is correct
+	if handlerSt == nil {
+		t.Fatal("handler received nil pointer")
+	}
+	if handlerSt.Name != "dan" {
+		t.Errorf("handler struct name = %q, want %q", handlerSt.Name, "dan")
+	}
+}
+
+func TestHandler_PointerStruct_ReceivesPointer_GETWithStruct(t *testing.T) {
+	w := setupController()
+
+	type Filter struct {
+		Name string `json:"name"`
+	}
+	type Output struct {
+		OK bool `json:"ok"`
+	}
+
+	var handlerArgType reflect.Type
+	var handlerArgKind reflect.Kind
+
+	AddGetWithStruct(w, "/test-ptr-handler-get", func(st *Filter, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
+		handlerArgType = reflect.TypeOf(st)
+		handlerArgKind = reflect.ValueOf(st).Kind()
+		return Output{OK: true}, nil, nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test-ptr-handler-get?name=eve", nil)
+	rr := httptest.NewRecorder()
+
+	handled, err := w.Run("", req, rr)
+	if !handled || err != nil {
+		t.Fatalf("Run returned handled=%v, err=%v", handled, err)
+	}
+
+	// Handler should receive *Filter (pointer), not Filter (value) or **Filter (double pointer)
+	expectedType := reflect.TypeOf((*Filter)(nil))
+	if handlerArgType != expectedType {
+		t.Errorf("handler arg type = %v, want %v", handlerArgType, expectedType)
+	}
+	if handlerArgKind != reflect.Pointer {
+		t.Errorf("handler arg kind = %v, want %v", handlerArgKind, reflect.Pointer)
+	}
+}
+
+func TestMiddleware_PointerStruct_NotDoublePointer(t *testing.T) {
+	w := setupController()
+
+	type Input struct {
+		Name string `json:"name"`
+	}
+	type Output struct {
+		OK bool `json:"ok"`
+	}
+
+	var middlewareValueType reflect.Type
+	var handlerArgType reflect.Type
+
+	middleware := func(value any, params ParamsManager, req *http.Request) (*CustomResponse, error) {
+		middlewareValueType = reflect.TypeOf(value)
+		return nil, nil
+	}
+
+	AddJsonPOST[*Input, Output](w, "/test-no-double-ptr", func(st *Input, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
+		handlerArgType = reflect.TypeOf(st)
+		return Output{OK: true}, nil, nil
+	}, middleware)
+
+	body := strings.NewReader(`{"name":"eve"}`)
+	req := httptest.NewRequest(http.MethodPost, "/test-no-double-ptr", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	handled, err := w.Run("", req, rr)
+	if !handled || err != nil {
+		t.Fatalf("Run returned handled=%v, err=%v", handled, err)
+	}
+
+	expectedType := reflect.TypeOf((*Input)(nil))
+
+	// Handler should receive *Input
+	if handlerArgType != expectedType {
+		t.Errorf("handler arg type = %v, want %v", handlerArgType, expectedType)
+	}
+
+	// Middleware should receive *Input (not **Input, Input, or reflect.Value)
+	if middlewareValueType != expectedType {
+		t.Errorf("middleware value type = %v, want %v", middlewareValueType, expectedType)
+	}
+
+	// Explicitly check it's not a double pointer
+	if middlewareValueType != nil && middlewareValueType.Kind() == reflect.Pointer &&
+		middlewareValueType.Elem().Kind() == reflect.Pointer {
+		t.Error("middleware received **Input (double pointer), want *Input")
 	}
 }
