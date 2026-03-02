@@ -134,7 +134,7 @@ func (w *WepiController) runUnwrapped(pathHead string, req *http.Request, wr htt
 	// Run middlewares; short-circuit if one returns a CustomResponse
 	for _, middleware := range route.Middlewares {
 		if middleware != nil {
-			c, err := middleware(stValue.Elem(), params, req)
+			c, err := middleware(stValue.Elem().Interface(), params, req)
 			if err != nil {
 				wr.WriteHeader(http.StatusInternalServerError)
 				return true, err
