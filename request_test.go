@@ -1,6 +1,8 @@
 package wepi
 
 import (
+	"bytes"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -34,6 +36,28 @@ func TestGetPostFormValues(t *testing.T) {
 	}
 	if values["name"] != "bob" {
 		t.Errorf("name = %v, want bob", values["name"])
+	}
+}
+
+func TestGetPostFormValuesMultipart(t *testing.T) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	writer.WriteField("name", "dave")
+	writer.WriteField("age", "40")
+	writer.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, "/test", &buf)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	values, err := GetPostFormValues(req)
+	if err != nil {
+		t.Fatalf("GetPostFormValues multipart error: %v", err)
+	}
+	if values["name"] != "dave" {
+		t.Errorf("name = %v, want dave", values["name"])
+	}
+	if values["age"] != "40" {
+		t.Errorf("age = %v, want 40", values["age"])
 	}
 }
 

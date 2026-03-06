@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"strings"
 )
 
 // readRequestValues parses the incoming request based on method and Content-Type.
@@ -77,10 +78,18 @@ func GetURLQuery(values url.Values) map[string]any {
 
 // GetPostFormValues parses the request form and returns values as a flat map.
 func GetPostFormValues(req *http.Request) (map[string]any, error) {
-	err := req.ParseForm()
-	if err != nil {
-		return nil, err
+	ct := req.Header.Get("Content-Type")
+
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		if err := req.ParseMultipartForm(32 << 20); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := req.ParseForm(); err != nil {
+			return nil, err
+		}
 	}
+
 	return GetURLQuery(req.PostForm), nil
 }
 
