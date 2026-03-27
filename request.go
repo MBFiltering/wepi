@@ -3,6 +3,7 @@ package wepi
 import (
 	"encoding/json"
 	"log"
+	"mime"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -33,7 +34,8 @@ func readRequestValues(req *http.Request, structType reflect.Type) (map[string]a
 	}
 
 	// JSON body: decode directly into the expected struct type
-	if req.Header.Get("Content-Type") == "application/json" {
+	mediaType, _, _ := mime.ParseMediaType(req.Header.Get("Content-Type"))
+	if mediaType == "application/json" {
 		stValue := reflect.New(structType)
 		err := json.NewDecoder(req.Body).Decode(stValue.Interface())
 		if err != nil {
