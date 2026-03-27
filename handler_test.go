@@ -77,6 +77,39 @@ func TestRun_POSTRoute_JSONBody(t *testing.T) {
 	}
 }
 
+func TestRun_JsonPostWithCharset(t *testing.T) {
+	type Input struct {
+		Name string `json:"name"`
+	}
+	type Output struct {
+		Greeting string `json:"greeting"`
+	}
+
+	w := setupController()
+
+	AddJsonPOST[Input, Output](w, "/greet-charset", func(st Input, params ParamsManager, req *http.Request) (Output, *CustomResponse, error) {
+		return Output{Greeting: "Hi " + st.Name}, nil, nil
+	})
+
+	body := strings.NewReader(`{"name":"alice"}`)
+	req := httptest.NewRequest(http.MethodPost, "/greet-charset", body)
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	rr := httptest.NewRecorder()
+
+	handled, err := w.Run("", req, rr)
+	if !handled || err != nil {
+		t.Fatalf("Run returned handled=%v, err=%v", handled, err)
+	}
+
+	var resp Output
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if resp.Greeting != "Hi alice" {
+		t.Errorf("greeting = %q, want %q", resp.Greeting, "Hi alice")
+	}
+}
+
 func TestRun_NoMatchingRoute(t *testing.T) {
 	w := setupController()
 
