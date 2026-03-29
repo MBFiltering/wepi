@@ -17,8 +17,8 @@ func (w *WepiController) runUnwrapped(pathHead string, req *http.Request, wr htt
 	path := strings.TrimPrefix(req.URL.Path, pathHead)
 
 	// Remove trailing slash to normalize paths (e.g. /users/ -> /users)
-	if len(path) > 1 && path[len(path)-1] == '/' {
-		path = path[:len(path)-1]
+	if path != "/" {
+		path = strings.TrimSuffix(path, "/")
 	}
 
 	// Treat PUT as POST
