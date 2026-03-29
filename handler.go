@@ -16,6 +16,11 @@ import (
 func (w *WepiController) runUnwrapped(pathHead string, req *http.Request, wr http.ResponseWriter) (bool, error) {
 	path := strings.TrimPrefix(req.URL.Path, pathHead)
 
+	// Remove trailing slash to normalize paths (e.g. /users/ -> /users)
+	if path != "/" {
+		path = strings.TrimSuffix(path, "/")
+	}
+
 	// Treat PUT as POST
 	if req.Method == http.MethodPut {
 		req.Method = http.MethodPost
